@@ -9,7 +9,7 @@ export async function convertToGreyscale(imagePath: string): Promise<{ buffer: B
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-  const greyscaleBuffer = Buffer.alloc(info.width * info.height * info.channels);
+  const greyscaleBuffer = Buffer.alloc(info.width * info.height); // Only one channel for grayscale
 
   for (let i = 0; i < data.length; i += info.channels) {
     const r = data[i];
@@ -18,9 +18,7 @@ export async function convertToGreyscale(imagePath: string): Promise<{ buffer: B
 
     const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
 
-    for (let c = 0; c < info.channels; c++) {
-      greyscaleBuffer[i + c] = y;
-    }
+    greyscaleBuffer[i / info.channels] = y;
   }
 
   return {

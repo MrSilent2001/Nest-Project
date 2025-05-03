@@ -9,9 +9,9 @@ function generateGaussianKernel(size: number, sigma: number): number[][] {
     for (let x = 0; x < size; x++) {
       const dx = x - mean;
       const dy = y - mean;
-      const value = 0;
+      const value = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
       kernel[y][x] = value;
-      sum = value;
+      sum += value;
     }
   }
 
