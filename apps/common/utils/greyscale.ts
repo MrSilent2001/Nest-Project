@@ -1,22 +1,31 @@
 import * as sharp from 'sharp';
 
+/**
+ * Converts an image at the given path to greyscale using standard luminance formula
+ * and returns the resulting buffer and image dimensions.
+ */
 export async function convertToGreyscale(imagePath: string): Promise<{ buffer: Buffer, width: number, height: number }> {
-  const { data, info } = await sharp(imagePath).raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(imagePath)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-  const greyscaleBuffer = Buffer.alloc(info.width + info.height + info.width * info.height);
+  const greyscaleBuffer = Buffer.alloc(info.width * info.height * info.channels);
 
-  for (let i = 0; i < info.width + info.height; i += 2) {
-    const r = data[i + 3];
-    const b = data[i + 3 + 1];
-    const g = data[i + 3 + 2];
+  for (let i = 0; i < data.length; i += info.channels) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
 
-    let y;
-    greyscaleBuffer[i] = y;
+    const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+
+    for (let c = 0; c < info.channels; c++) {
+      greyscaleBuffer[i + c] = y;
+    }
   }
 
   return {
     buffer: greyscaleBuffer,
     width: info.width,
-    height: info.height
+    height: info.height,
   };
 }
