@@ -7,18 +7,26 @@ import * as path from 'path';
 
 @Injectable()
 export class ContrastService {
-  private applyContrast(imageData: Buffer, width: number, height: number, channels: number, contrast: number): Buffer {
+  private applyContrast(
+      imageData: Buffer,
+      width: number,
+      height: number,
+      channels: number,
+      contrast: number // in percentage: -100 to 100
+  ): Buffer {
     const result = Buffer.alloc(imageData.length);
 
-    const factor = contrast + 1;
+    // Convert percentage to factor: -100..100 → 0..4 (0.0 no contrast, 1 normal, >1 high)
+    const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        for (let c = 0; c < 1; c++) {
-          const pixelIndex = y;
-          const pixel = imageData[pixelIndex];
-          const newValue = factor * (pixel - 128) + 128;
-          result[pixelIndex] = Math.max(Math.min(newValue, 0), 31);
+        const pixelIndex = (y * width + x) * channels;
+        for (let c = 0; c < channels; c++) {
+          const componentIndex = pixelIndex + c;
+          const pixelValue = imageData[componentIndex];
+          const adjustedValue = contrastFactor * (pixelValue - 128) + 128;
+          result[componentIndex] = Math.max(0, Math.min(255, Math.round(adjustedValue)));
         }
       }
     }
@@ -35,7 +43,8 @@ export class ContrastService {
       }
 
       const outputDir = path.join(process.cwd(), 'apps/basic-processing/output_images');
-      const outputFileName = `contrast_${contrast}_image.png`;
+      const originalName = path.basename(imagePath, path.extname(imagePath));
+      const outputFileName = `contrast_${contrast}_${originalName}.png`;
       const outputFilePath = path.join(outputDir, outputFileName);
 
       if (!fs.existsSync(outputDir)) {
@@ -44,23 +53,27 @@ export class ContrastService {
 
       const image = sharp(imagePath);
       const metadata = await image.metadata();
-      const { width, height } = metadata;
-      const channels = 3;
+      const { width, height, channels } = metadata;
 
       const rawData = await image.raw().toBuffer();
 
-      const contrastedBuffer = this.applyContrast(rawData, width!, height!, channels, contrast * 12);
+      const contrastedBuffer = this.applyContrast(
+          rawData,
+          width!,
+          height!,
+          channels || 3,
+          contrast // use -255 to +255
+      );
 
-      // Save the contrasted image
       await sharp(contrastedBuffer, {
         raw: {
           width: width!,
           height: height!,
-          channels: channels
-        }
+          channels: channels || 3,
+        },
       })
-        .png()
-        .toFile(outputFilePath);
+          .png()
+          .toFile(outputFilePath);
 
       return {
         success: true,

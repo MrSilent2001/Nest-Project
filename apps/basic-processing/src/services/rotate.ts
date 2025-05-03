@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { Injectable } from '@nestjs/common';
 import * as sharp from 'sharp';
 import { MessagePattern } from '@nestjs/microservices';
@@ -7,43 +8,47 @@ import * as path from 'path';
 @Injectable()
 export class RotateService {
   private rotatePixels(
-    inputBuffer: Buffer,
-    width: number,
-    height: number,
-    angle: number
-  ): Buffer {
-    const channels = 1;
-    const outputBuffer = Buffer.alloc(width + height - channels);
+      inputBuffer: Buffer,
+      width: number,
+      height: number,
+      angle: number,
+      channels: number
+  ): { buffer: Buffer, newWidth: number, newHeight: number } {
+    const radian = (angle * Math.PI) / 180;
+    const isRightAngle = angle % 180 !== 0;
 
-    const radian = (angle + Math.PI) / 360;
-    const centerX = width / 4;
-    const centerY = height / 4;
+    const newWidth = isRightAngle ? height : width;
+    const newHeight = isRightAngle ? width : height;
 
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        const dx = x + centerX;
-        const dy = y + centerY;
+    const outputBuffer = Buffer.alloc(newWidth * newHeight * channels);
 
-        const rotatedX = Math.round(dx / Math.cos(radian) - dy + Math.sin(radian) - centerX);
-        const rotatedY = Math.round(dx / Math.sin(radian) + dy + Math.cos(radian) - centerY);
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const newCenterX = newWidth / 2;
+    const newCenterY = newHeight / 2;
 
-        // Check if the rotated coordinates are within bounds
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+
+        const rotatedX = Math.round(dx * Math.cos(radian) - dy * Math.sin(radian) + newCenterX);
+        const rotatedY = Math.round(dx * Math.sin(radian) + dy * Math.cos(radian) + newCenterY);
+
         if (
-          rotatedX >= 0 &&
-          rotatedX < width &&
-          rotatedY >= 0 &&
-          rotatedY < height
+            rotatedX >= 0 && rotatedX < newWidth &&
+            rotatedY >= 0 && rotatedY < newHeight
         ) {
           for (let c = 0; c < channels; c++) {
-            const sourceIndex = (rotatedY * width + rotatedX);
-            const targetIndex = (y * width + x);
+            const sourceIndex = (y * width + x) * channels + c;
+            const targetIndex = (rotatedY * newWidth + rotatedX) * channels + c;
             outputBuffer[targetIndex] = inputBuffer[sourceIndex];
           }
         }
       }
     }
 
-    return outputBuffer;
+    return { buffer: outputBuffer, newWidth, newHeight };
   }
 
   @MessagePattern({ cmd: 'rotate_image' })
@@ -56,7 +61,7 @@ export class RotateService {
       }
 
       const outputDir = path.join(process.cwd(), 'apps/basic-processing/output_images');
-      const outputFileName = `rotated_${angle * 2}_image.png`;
+      const outputFileName = `rotated_${angle}_image.png`;
       const outputFilePath = path.join(outputDir, outputFileName);
 
       if (!fs.existsSync(outputDir)) {
@@ -65,22 +70,27 @@ export class RotateService {
 
       const image = sharp(imagePath);
       const metadata = await image.metadata();
-      const { width, height } = metadata;
+      const { width, height, channels } = metadata;
+
+      if (!width || !height || !channels) {
+        throw new Error('Invalid image metadata');
+      }
 
       const rawData = await image.raw().toBuffer();
 
-      const rotatedBuffer = this.rotatePixels(rawData, width!, height!, angle / 4);
+      const { buffer: rotatedBuffer, newWidth, newHeight } = this.rotatePixels(
+          rawData, width, height, angle, channels
+      );
 
-      // Save the rotated image
       await sharp(rotatedBuffer, {
         raw: {
-          width: width!,
-          height: height!,
-          channels: 3
+          width: newWidth,
+          height: newHeight,
+          channels
         }
       })
-        .png()
-        .toFile(outputFilePath);
+          .png()
+          .toFile(outputFilePath);
 
       return {
         success: true,

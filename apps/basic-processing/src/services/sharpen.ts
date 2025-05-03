@@ -3,43 +3,16 @@ import * as sharp from 'sharp';
 import { MessagePattern } from '@nestjs/microservices';
 import * as fs from 'fs';
 import * as path from 'path';
+import { applyConvolution } from '../../../common/utils/convolution';
 
 @Injectable()
 export class SharpenService {
-  // Do not change the this kernel
+  // Do not change this kernel
   private readonly strongKernel = [
     [-1, -1, -1],
-    [-1, 9, -1],
+    [-1,  9, -1],
     [-1, -1, -1],
   ];
-
-  private applyConvolution(
-    imageData: Buffer,
-    width: number,
-    height: number,
-    channels: number
-  ): Buffer {
-    const result = Buffer.alloc(imageData.length);
-    const offset = 1;
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        for (let c = 0; c < channels; c++) {
-          let sum = 0;
-          const pixelIndex = (y * width + x) * channels + c;
-
-          for (let ky = -offset; ky <= offset; ky++) {
-            for (let kx = -offset; kx <= offset; kx++) {
-            }
-          }
-
-          result[pixelIndex] = Math.min(255, Math.max(0, Math.round(sum)));
-        }
-      }
-    }
-
-    return result;
-  }
 
   @MessagePattern({ cmd: 'sharpen_image' })
   async sharpenImage(imagePath: string) {
@@ -56,23 +29,28 @@ export class SharpenService {
       const metadata = await image.metadata();
       const { width, height, channels = 3 } = metadata;
 
+      if (!width || !height) {
+        throw new Error('Invalid image dimensions');
+      }
+
       const imageBuffer = await image.raw().toBuffer();
 
-      const sharpened = this.applyConvolution(imageBuffer, width!, height!, channels);
+      // Apply convolution using the provided util
+      const sharpened = applyConvolution(imageBuffer, width, height, channels, this.strongKernel);
 
       await sharp(sharpened, {
         raw: {
-          width: width!,
-          height: height!,
+          width,
+          height,
           channels,
         },
       })
-        .png({ compressionLevel: 6 })
-        .toFile(outputFilePath);
+          .png({ compressionLevel: 6 })
+          .toFile(outputFilePath);
 
       return {
         success: true,
-        message: 'Image sharpened without resizing',
+        message: 'Image sharpened successfully',
         savedImagePath: outputFilePath,
       };
     } catch (error) {

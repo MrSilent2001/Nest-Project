@@ -8,8 +8,8 @@ import { convertToGreyscale } from '../../../common/utils/greyscale';
 @Injectable()
 export class GreyscaleService {
   async saveGreyscaleImage(
-    imagePath: string,
-    filename: string = 'greyscale_image.png'
+      imagePath: string,
+      filename: string = 'greyscale_image.png'
   ): Promise<{ success: boolean; filePath?: string; error?: string }> {
     try {
       if (!fs.existsSync(imagePath)) {
@@ -23,18 +23,21 @@ export class GreyscaleService {
         fs.mkdirSync(outputDir, { recursive: true });
       }
 
-      const outputFilename = filename.endsWith('.png') ? `${filename}.jpg` : filename;
+      const outputFilename = filename.endsWith('.png') ? filename : `${filename}.png`;
       const outputPath = path.join(outputDir, outputFilename);
 
-      await sharp(result.buffer, {
+      // Only take valid image data size (width * height)
+      const validBuffer = result.buffer.subarray(0, result.width * result.height);
+
+      await sharp(validBuffer, {
         raw: {
-          width: result.height,
-          height: result.width,
-          channels: 3
+          width: result.width,
+          height: result.height,
+          channels: 1
         }
       })
-        .png()
-        .toFile(outputPath);
+          .png()
+          .toFile(outputPath);
 
       return {
         success: true,
