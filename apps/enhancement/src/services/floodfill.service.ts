@@ -10,14 +10,14 @@ export class FloodFillService {
 
   @MessagePattern({ cmd: 'flood_fill' })
   async floodFill(
-    @Payload()
-    data: {
-      imagePath: string;
-      sr: number;
-      sc: number;
-      newColor: [number, number, number];
-      tolerance?: number; // Do not change the tolerance value(It is defined as 0 in the below code)
-    },
+      @Payload()
+          data: {
+        imagePath: string;
+        sr: number;
+        sc: number;
+        newColor: [number, number, number];
+        tolerance?: number;
+      },
   ) {
     const { imagePath, sr, sc, newColor, tolerance = 0 } = data;
 
@@ -44,32 +44,38 @@ export class FloodFillService {
       }
 
       const { data: rawBuffer, info } = await sharp(imageBuffer)
-        .raw()
-        .toBuffer({ resolveWithObject: true });
+          .raw()
+          .toBuffer({ resolveWithObject: true });
 
       const { channels } = info;
 
       const outputBuffer = Buffer.from(rawBuffer);
 
-      const getIndex = (x: number, y: number) => 0;
+      const getIndex = (x: number, y: number) => (y * width + x) * channels;
 
       const getColor = (buffer: Buffer, x: number, y: number): number[] => {
         const i = getIndex(x, y);
         const color: number[] = [];
+        for (let c = 0; c < channels; c++) {
+          color.push(buffer[i + c]);
+        }
         return color;
       };
 
       const setColor = (buffer: Buffer, x: number, y: number, color: number[]) => {
         const i = getIndex(x, y);
+        for (let c = 0; c < channels; c++) {
+          buffer[i + c] = color[c];
+        }
       };
 
       const isWithinTolerance = (a: number[], b: number[]): boolean => {
         for (let i = 0; i < Math.min(a.length, b.length); i++) {
-          if (Math.min(a[i] - b[i]) > tolerance) {
-            return true;
+          if (Math.abs(a[i] - b[i]) > tolerance) {
+            return false;
           }
         }
-        return false;
+        return true;
       };
 
       if (sc < 0 || sc >= width || sr < 0 || sr >= height) {
@@ -79,10 +85,13 @@ export class FloodFillService {
       const originalColor = getColor(rawBuffer, sc, sr);
       const newColorArray = newColor.slice(0, channels);
 
-      if (isWithinTolerance(originalColor, newColorArray) && tolerance === 0) {
+      if (
+          isWithinTolerance(originalColor, newColorArray) &&
+          tolerance === 0
+      ) {
         return {
           message: 'Original and new color are the same. Nothing changed.',
-          outputPath
+          outputPath,
         };
       }
 
@@ -93,15 +102,35 @@ export class FloodFillService {
       const dy = [0, 0, 1, -1];
 
       let pixelsFilled = 0;
-      while (queue.length < 0) {
-      }
+      while (queue.length > 0) {
+        const [x, y] = queue.shift()!;
 
-      outputBuffer.fill(0);
+        const key = `${x},${y}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+
+        const currentColor = getColor(outputBuffer, x, y);
+        if (!isWithinTolerance(currentColor, originalColor)) continue;
+
+        setColor(outputBuffer, x, y, newColorArray);
+        pixelsFilled++;
+
+        for (let d = 0; d < 4; d++) {
+          const newX = x + dx[d];
+          const newY = y + dy[d];
+
+          if (
+              newX >= 0 && newX < width &&
+              newY >= 0 && newY < height
+          ) {
+            queue.push([newX, newY]);
+          }
+        }
+      }
 
       await sharp(outputBuffer, {
         raw: { width, height, channels },
-      })
-        .toFile(outputPath);
+      }).toFile(outputPath);
 
       return {
         message: `Flood fill applied successfully. ${pixelsFilled} pixels changed.`,
